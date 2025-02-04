@@ -102,10 +102,6 @@ pub mod build {
                 // let entry_path = entry_file_name.unwrap_or(&relative_file_path).to_string();
 
                 list_values.push(relative_file_path.clone());
-                println!(
-                    "Adding entry: {} for {}",
-                    &relative_file_path, absolute_file_path
-                );
 
                 FileEntry::new(relative_file_path.clone(), absolute_file_path).map_err(|e| {
                     return syn::Error::new(
@@ -234,7 +230,6 @@ pub mod build {
                 }
 
                 pub fn get(path: &str) -> Option<#crate_path::ViteFile> {
-                    println!("Fetching: {}", path);
                     let path = path.to_string();
                     std::thread::spawn(move || {
                         let client = #crate_path::vite_rs_dev_server::reqwest::blocking::Client::new();
@@ -247,8 +242,6 @@ pub mod build {
 
                         match client.get(url).send() {
                             Ok(res) => {
-                                println!("OK! {:#?}", res);
-
                                 if res.status() == 404 {
                                     return None;
                                 }
@@ -294,7 +287,7 @@ pub mod build {
                                 })
                             }
                             Err(e) => {
-                                println!("ERR! {:#?}", e);
+                                eprintln!("ERR! {:#?}", e);
                                 None
                             },
                         }
