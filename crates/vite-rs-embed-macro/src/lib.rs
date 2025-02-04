@@ -111,6 +111,57 @@ fn derive_relative_output_dir(
     Ok(relative_output_dir.to_string())
 }
 
+/// Path to the manifest.json file, relative to the `root_dir`.
+/// By default, it is set to `./$output/.vite/manifest.json` but can be overridden by specifying a `#[manifest = "./path/to/manifest.json"]` attribute under the derive macro.
+///
+/// Moreover, any path specified must be within `root_dir`.
+///
+/// Since this deals with compiled assets, it shouldn't be necessary for non-release builds.
+#[cfg(any(feature = "debug-prod", not(debug_assertions)))]
+fn derive_relative_manifest_path(
+    ast: &syn::DeriveInput,
+    absolute_root_dir: &str,
+    relative_output_dir: &str,
+) -> syn::Result<String> {
+    let mut manifest_attrs = syn_utils::find_attribute_values(ast, "manifest");
+    if manifest_attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            ast,
+            "When specifying a custom manifest path, #[derive(vite_rs::Embed)] must only contain a single #[manifest = \"./path/to/manifest.json\"] attribute.",
+        ));
+    }
+
+    let mut manifest_path = if manifest_attrs.len() == 0 {
+        PathBuf::from(relative_output_dir)
+            .join(".vite")
+            .join("manifest.json")
+    } else {
+        manifest_attrs.remove(0).into()
+    };
+
+    if manifest_path.is_relative() {
+        let root_dir = Path::new(absolute_root_dir);
+        manifest_path = root_dir.join(&manifest_path);
+    }
+
+    if !manifest_path.is_file() {
+        return Err(syn::Error::new_spanned(
+            ast,
+            format!("Manifest path '{}' must be a file", manifest_path.display()),
+        ));
+    }
+
+    let manifest_path = manifest_path.canonicalize().unwrap();
+
+    let relative_manifest_path = manifest_path
+            .strip_prefix(&absolute_root_dir)
+            .expect("manifest path specified with #[manifest = \"...\"] must be within the project root directory.")
+            .to_str()
+            .unwrap();
+
+    Ok(relative_manifest_path.to_string())
+}
+
 #[cfg(any(feature = "debug-prod", not(debug_assertions)))]
 fn create_output_dir_if_not_exists(
     ast: &syn::DeriveInput,
@@ -206,6 +257,9 @@ fn impl_vitejs_embed(ast: &syn::DeriveInput) -> syn::Result<TokenStream2> {
     let absolute_root_dir = derive_absolute_root_dir(ast)?;
     #[cfg(any(feature = "debug-prod", not(debug_assertions)))]
     let relative_output_dir = derive_relative_output_dir(ast, &absolute_root_dir)?;
+    #[cfg(any(feature = "debug-prod", not(debug_assertions)))]
+    let relative_manifest_path =
+        derive_relative_manifest_path(ast, &absolute_root_dir, &relative_output_dir)?;
     let crate_path = derive_crate_path(ast)?;
 
     let dev_server_host = "localhost";
@@ -224,6 +278,8 @@ fn impl_vitejs_embed(ast: &syn::DeriveInput) -> syn::Result<TokenStream2> {
         /* prod-only */
         #[cfg(any(feature = "debug-prod", not(debug_assertions)))]
         &relative_output_dir,
+        #[cfg(any(feature = "debug-prod", not(debug_assertions)))]
+        &relative_manifest_path,
     )
 }
 
@@ -232,7 +288,8 @@ fn impl_vitejs_embed(ast: &syn::DeriveInput) -> syn::Result<TokenStream2> {
 /// - #[output]: derive_relative_output_dir (define above)
 /// - #[dev_server_port]: derive_dev_server_port (define above)
 /// - #[crate_path]: derive_crate_path (define above)
-#[proc_macro_derive(Embed, attributes(root, output, dev_server_port, crate_path))]
+/// - #[manifest: derive_relative_manifest_path (define above)
+#[proc_macro_derive(Embed, attributes(root, output, dev_server_port, crate_path, manifest))]
 pub fn derive_input_object(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     match impl_vitejs_embed(&ast) {

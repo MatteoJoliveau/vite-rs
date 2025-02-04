@@ -32,6 +32,7 @@ pub mod build {
         struct_ident: &syn::Ident,
         absolute_root_dir: &str,
         relative_output_dir: &str,
+        relative_manifest_path: &str,
     ) -> syn::Result<TokenStream2> {
         // proc_macro::tracked_path::path(absolute_root_dir); // => please see comments @ crates/vite-rs/tests/recompilation_test.rs:43
 
@@ -67,11 +68,12 @@ pub mod build {
 
         // the vite manifest is only available AFTER the build, so don't move this line up :)
         let absolute_vite_manifest_path = {
-            let p = PathBuf::from_iter(&[&absolute_output_path, ".vite", "manifest.json"])
+            let p = PathBuf::from(&absolute_root_dir)
+                .join(relative_manifest_path)
                 .canonicalize()
                 .expect(&format!(
-                    "Could not canonicalize ViteJS manifest path. Does it exist? (path: {:?})",
-                    absolute_output_path
+                    "Could not canonicalize ViteJS manifest path. Does it exist? (path: {}/{})",
+                    absolute_root_dir, relative_manifest_path
                 ));
 
             p.to_str().unwrap().to_string()
